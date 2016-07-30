@@ -1,7 +1,9 @@
+use core::{mem, ptr};
+
 use ::u2size::u2size;
 
 // k ≥ 2 ⇒ leo[k] = leo[k - 1] + leo[k - 2] + 1
-const leo: [usize; 92] = [
+const leo: [isize; 92] = [
     0x0000000000000001,
     0x0000000000000001,
     0x0000000000000003,
@@ -96,15 +98,14 @@ const leo: [usize; 92] = [
     0xD147BB1CC3D99F79,
 ];
 
-struct LeoHeap<'a, T: 'a, Less: Fn(&T, &T) -> bool> {
-    xs: &'a mut [T],
-    i: usize,
+struct LeoHeap<T, Less: Fn(&T, &T) -> bool> {
+    ptr: *mut T,
     sizes: u2size,
     less: Less,
 }
 
-impl<'a, T, Less: Fn(&T, &T) -> bool> LeoHeap<'a, T, Less> {
-    fn push(&mut self) {
+impl<T, Less: Fn(&T, &T) -> bool> LeoHeap<T, Less> {
+    unsafe fn push(&mut self) {
         let order = self.sizes.trailing_zeros();
         if self.sizes > u2size::from(0) &&
            (self.sizes >> order).lsw & 7 == 3  /* last 2 trees of order k and k+1 */  {
@@ -114,13 +115,13 @@ impl<'a, T, Less: Fn(&T, &T) -> bool> LeoHeap<'a, T, Less> {
         } else {
             self.sizes.lsw |= 2;  // Add a tree of order 1
         }
-        self.i = self.i.wrapping_add(1);
+        self.ptr = self.ptr.offset(1);
         self.insert_root();
     }
 
-    fn pop(&mut self) {
+    unsafe fn pop(&mut self) {
         debug_assert!(self.sizes > u2size::from(0));
-        self.i = self.i.wrapping_sub(1);
+        self.ptr = self.ptr.offset(-1);
         if self.sizes.lsw & 3 == 3 /* last trees of order 0 and 1 */ {
             self.sizes.lsw ^= 1;
         } else if self.sizes.lsw & 3 == 2 /* last tree of order 1 */ {
@@ -129,18 +130,18 @@ impl<'a, T, Less: Fn(&T, &T) -> bool> LeoHeap<'a, T, Less> {
             let order = self.sizes.trailing_zeros();
             debug_assert!(order > 1);
 
-            let i = self.i - leo[order - 2];
+            let p = self.ptr.offset(-leo[order - 2]);
             if self.sizes ^ u2size::from(1) << order > u2size::from(0) {
-                let j = i - leo[order - 1];
-                if (self.less)(&self.xs[i], &self.xs[j]) {
-                    self.xs.swap(i, j);
-                    LeoHeap { xs: self.xs, i: j, sizes: self.sizes ^ u2size::from(1) << order,
+                let q = p.offset(-leo[order - 1]);
+                if (self.less)(mem::transmute(p), mem::transmute(q)) {
+                    ptr::swap(p, q);
+                    LeoHeap { ptr: q, sizes: self.sizes ^ u2size::from(1) << order,
                               less: &self.less }.insert_root();
                 }
             }
-            if (self.less)(&self.xs[self.i], &self.xs[i]) {
-                self.xs.swap(self.i, i);
-                LeoHeap { xs: self.xs, i: i, sizes: self.sizes ^ u2size::from(3) << (order - 1),
+            if (self.less)(mem::transmute(self.ptr), mem::transmute(p)) {
+                ptr::swap(self.ptr, p);
+                LeoHeap { ptr: p, sizes: self.sizes ^ u2size::from(3) << (order - 1),
                           less: &self.less }.insert_root();
             }
 
@@ -150,52 +151,47 @@ impl<'a, T, Less: Fn(&T, &T) -> bool> LeoHeap<'a, T, Less> {
 
     // Moves the given root to its appropriate location in the sequence of roots
     // and sifts that tree.
-    fn insert_root(&mut self) {
-        let mut k = self.i;
+    unsafe fn insert_root(&mut self) {
+        let mut r = self.ptr;
         let mut sizes = self.sizes;
         while sizes.count_ones() > 1 {
             let order = sizes.trailing_zeros();
-            let i = near_heap_ultimate_root_ix(&mut self.xs[0..k + 1], order, &self.less);
-            let j = k - leo[order];
-            if !(self.less)(&self.xs[i], &self.xs[j]) { break }
+            let p = near_heap_ultimate_root_ptr(r, order, &self.less);
+            let q = r.offset(-leo[order]);
+            if !(self.less)(mem::transmute(p), mem::transmute(q)) { break }
             sizes ^= u2size::from(1) << order;
-            self.xs.swap(j, k);
-            k = j;
+            ptr::swap(q, r);
+            r = q;
         }
-        sift(&mut self.xs[0..k+1], sizes.trailing_zeros(), &self.less);
+        sift(r, sizes.trailing_zeros(), &self.less);
     }
 }
 
-fn sift<T, F: Fn(&T, &T) -> bool>(xs: &mut [T], mut order: usize, f: F) {
-    debug_assert!(xs.len() >= leo[order]);
-    let mut root = xs.len() - 1;
+unsafe fn sift<T, F: Fn(&T, &T) -> bool>(mut root: *mut T, mut order: usize, f: F) {
     while order > 1 {
-        let new_root = near_heap_ultimate_root_ix(&mut xs[0..root + 1], order, &f);
-        order = match root - new_root {
+        let new_root = near_heap_ultimate_root_ptr(root, order, &f);
+        order = match ((root as usize) - (new_root as usize))/mem::size_of::<T>() {
             0 => return,
             1 => order - 2,
             _ => order - 1,
         };
-        xs.swap(root, new_root);
+        ptr::swap(root, new_root);
         root = new_root;
     }
 }
 
-fn near_heap_ultimate_root_ix<T, F: Fn(&T, &T) -> bool>(xs: &mut [T], order: usize, f: F) -> usize {
-    debug_assert!(xs.len() >= leo[order]);
-    let mut root = xs.len() - 1;
-    if order > 1 { for &child_root in &[root - leo[order - 2] - 1, root - 1] {
-        if f(&xs[root], &xs[child_root]) { root = child_root; }
+unsafe fn near_heap_ultimate_root_ptr<T, F: Fn(&T, &T) -> bool>(mut root: *mut T, order: usize, f: F) -> *mut T {
+    if order > 1 { for &child_root in &[root.offset(-(leo[order - 2] + 1)), root.offset(-1)] {
+        if f(mem::transmute(root), mem::transmute(child_root)) { root = child_root; }
     } }
     root
 }
 
-pub fn sort<T, Less: Fn(&T, &T) -> bool>(xs: &mut [T], less: Less) {
-    let l = xs.len();
-    let mut h = LeoHeap { xs: xs, i: !0, sizes: u2size::from(0), less: less };
-    for _ in 0..l { h.push() }
-    for _ in 0..l { h.pop() }
-}
+pub fn sort<T, Less: Fn(&T, &T) -> bool>(xs: &mut [T], less: Less) { unsafe {
+    let mut h = LeoHeap { ptr: xs.as_mut_ptr().offset(-1), sizes: u2size::from(0), less: less };
+    for _ in 0..xs.len() { h.push() }
+    for _ in 0..xs.len() { h.pop() }
+} }
 
 #[cfg(test)] mod tests {
     use quickcheck::*;
