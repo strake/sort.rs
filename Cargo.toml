@@ -1,0 +1,8 @@
+[package]
+name = "sort"
+version = "0.1.0"
+authors = ["M Farkas-Dyck <strake888@gmail.com>"]
+
+[dev-dependencies]
+quickcheck = "0.2.27"
+quickcheck_macros = "=0.2.26"
