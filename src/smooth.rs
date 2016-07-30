@@ -130,7 +130,8 @@ impl<'a, T, Less: Fn(&T, &T) -> bool> LeoHeap<'a, T, Less> {
             debug_assert!(order > 1);
 
             let i = self.i - leo[order - 2];
-            if let Some(j) = i.checked_sub(leo[order - 1]) {
+            if self.sizes ^ u2size::from(1) << order > u2size::from(0) {
+                let j = i - leo[order - 1];
                 if (self.less)(&self.xs[i], &self.xs[j]) {
                     self.xs.swap(i, j);
                     LeoHeap { xs: self.xs, i: j, sizes: self.sizes ^ u2size::from(1) << order,
