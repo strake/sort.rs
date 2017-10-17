@@ -8,6 +8,7 @@
 #[cfg(test)] extern crate quickcheck;
 #[cfg(test)] extern crate std;
 
+pub mod merge;
 pub mod smooth;
 
 mod u2size;
