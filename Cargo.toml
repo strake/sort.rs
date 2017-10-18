@@ -4,5 +4,7 @@ version = "0.1.0"
 authors = ["M Farkas-Dyck <strake888@gmail.com>"]
 
 [dev-dependencies]
+criterion = { git = "https://github.com/japaric/criterion.rs", rev = "a31a0c4d393f7a65cb56a55b5d9083e090da29e7" }
+criterion-macros = { git = "https://github.com/japaric/criterion.rs", rev = "a31a0c4d393f7a65cb56a55b5d9083e090da29e7" }
 quickcheck = "0.4"
 quickcheck_macros = "0.4.2"
