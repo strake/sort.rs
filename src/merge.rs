@@ -88,6 +88,7 @@ fn go<T, Less: Fn(&T, &T) -> bool>(xs: &mut [T], less: &Less) {
 }
 
 fn merge<T, Less: Fn(&T, &T) -> bool>(mut xs: &mut [T], mut m: usize, less: &Less) {
+    assert!(xs.len() >= m, "out of bounds");
     while m != 0 && m != xs.len() {
         let (mut i, mut j) = (m, m);
         while i > 0 && j < xs.len() && less(&xs[j], &xs[i-1]) { i -= 1; j += 1; }
