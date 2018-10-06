@@ -133,9 +133,9 @@ impl<T, Less: Fn(&T, &T) -> bool> LeoHeap<T, Less> {
             let order = self.sizes.trailing_zeros();
             debug_assert!(order > 1);
 
-            let p = self.ptr.offset(-leo[order - 2]);
+            let p = self.ptr.offset(-leo.get_unchecked(order - 2));
             if self.sizes ^ u2size::from(1) << order > u2size::from(0) {
-                let q = p.offset(-leo[order - 1]);
+                let q = p.offset(-leo.get_unchecked(order - 1));
                 if (self.less)(&*p, &*q) {
                     ptr::swap(p, q);
                     LeoHeap { ptr: q, sizes: self.sizes ^ u2size::from(1) << order,
@@ -161,7 +161,7 @@ impl<T, Less: Fn(&T, &T) -> bool> LeoHeap<T, Less> {
         while sizes.count_ones() > 1 {
             let order = sizes.trailing_zeros();
             let p = near_heap_ultimate_root_ptr(r, order, &self.less);
-            let q = r.offset(-leo[order]);
+            let q = r.offset(-leo.get_unchecked(order));
             if !(self.less)(&*p, &*q) { break }
             sizes ^= u2size::from(1) << order;
             ptr::swap(q, r);
@@ -187,7 +187,7 @@ unsafe fn sift<T, F: Fn(&T, &T) -> bool>(mut root: *mut T, mut order: usize, f: 
 
 #[inline]
 unsafe fn near_heap_ultimate_root_ptr<T, F: Fn(&T, &T) -> bool>(mut root: *mut T, order: usize, f: F) -> *mut T {
-    if order > 1 { for &child_root in &[root.offset(-(leo[order - 2] + 1)), root.offset(-1)] {
+    if order > 1 { for &child_root in &[root.offset(-(leo.get_unchecked(order - 2) + 1)), root.offset(-1)] {
         if f(&*root, &*child_root) { root = child_root; }
     } }
     root
